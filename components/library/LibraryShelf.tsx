@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
-import { getAirPagesReadUrl } from "@/lib/library";
 import type { LibraryBook } from "@/lib/library";
 import { getLibraryCoverUrl } from "@/lib/library";
 
@@ -66,7 +65,7 @@ export function LibraryShelf({books}:{books:LibraryBook[]}){
     {selected&&<div className="book-launch" onClick={()=>setSelected(null)}>
       <div className="launch-card" onClick={e=>e.stopPropagation()}>
         <div className="launch-kicker">OPENING VOLUME</div><h2>{selected.title}</h2><p>{selected.author}</p>
-        <div className="launch-actions"><button onClick={()=>window.location.href=getAirPagesReadUrl(selected.id)}><BookOpen size={16}/> Read in AirPages</button><button className="ghost" onClick={()=>window.location.href="/read/"+selected.id}>Open reader <ArrowRight size={15}/></button></div>
+        <div className="launch-actions"><button onClick={()=>window.location.href="/read/"+selected.id}><BookOpen size={16}/> Read in AirPages</button><button className="ghost" onClick={()=>window.location.href="/read/"+selected.id}>Open reader <ArrowRight size={15}/></button></div>
       </div>
     </div>}
   </div>
