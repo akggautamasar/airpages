@@ -1,8 +1,28 @@
-"use client";
-import{useState}from"react";import{Bookmark,Menu,Moon,Palette,Settings2,Sun,Upload}from"lucide-react";
-import{ReaderSidebar}from"@/components/reader/ReaderSidebar";import{StudyToolbar}from"@/components/reader/StudyToolbar";import{ThreePaperCanvas}from"@/components/effects/ThreePaperCanvas";import{useStudyState}from"@/lib/study";import{defaultPresentation,presentationPresets}from"@/lib/effects/presentation";import type{ReaderDocument}from"@/lib/document";
-const demo:ReaderDocument={id:"airpages-demo",title:"AirPages Study Demo",author:"AirPages",type:"pdf",pageCount:8,pages:Array.from({length:8},(_,i)=>({index:i,label:"Page "+(i+1),imageUrl:"/demo/page-"+(i+1)+".svg"}))};
-export default function Home(){const[page,setPage]=useState(0),[side,setSide]=useState(true),[settings,setSettings]=useState(true),[dark,setDark]=useState(true),[preset,setPreset]=useState(defaultPresentation);const study=useStudyState(demo.id);
-return <main className={dark?"airpages dark":"airpages"}><header className="topbar"><div className="brand"><button className="icon-btn" onClick={()=>setSide(!side)}><Menu size={18}/></button><div><div className="wordmark">AirPages</div><div className="crumb">{demo.title}</div></div></div><div className="top-actions"><button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?<Sun size={17}/>:<Moon size={17}/>}</button><button className="icon-btn" onClick={()=>study.toggleBookmark(page)}><Bookmark size={17} fill={study.bookmarks.includes(page)?"currentColor":"none"}/></button><button className="icon-btn" onClick={()=>setSettings(!settings)}><Settings2 size={17}/></button></div></header>
-<section className="reader-shell">{side&&<ReaderSidebar document={demo} currentPage={page} onSelect={setPage}/>}<div className="reader-main"><div className="study-strip"><span>{demo.title}</span><span>PAGE {page+1} / {demo.pageCount}</span></div><div className="stage-wrap"><div className="reader-stage"><ThreePaperCanvas page={demo.pages[page]} presentation={preset}/>{study.focus&&<div className="focus-ring"/>}</div></div><StudyToolbar page={page} count={demo.pageCount} prev={()=>setPage(Math.max(0,page-1))} next={()=>setPage(Math.min(demo.pageCount-1,page+1))} focus={study.focus} onFocus={study.toggleFocus} notes={study.notes} onNotes={study.toggleNotes}/></div>
-{settings&&<aside className="settings-panel"><div className="panel-head"><div><div className="eyebrow">PRESENTATION ENGINE</div><h2>Turn any page into a place.</h2></div><Palette size={18}/></div><div className="preset-grid">{Object.values(presentationPresets).map(p=><button key={p.id} className={preset.id===p.id?"preset active":"preset"} onClick={()=>setPreset(p)}><span className="preset-swatch" style={{background:p.background}}/>{p.name}</button>)}</div><label className="range">Depth <input type="range" min="0" max="1" step=".01" value={preset.depth} onChange={e=>setPreset({...preset,depth:+e.target.value})}/></label><label className="range">Shadow <input type="range" min="0" max="1" step=".01" value={preset.shadow} onChange={e=>setPreset({...preset,shadow:+e.target.value})}/></label><label className="range">Warmth <input type="range" min="0" max="1" step=".01" value={preset.warmth} onChange={e=>setPreset({...preset,warmth:+e.target.value})}/></label><div className="drop"><Upload size={15}/> PDF/EPUB ingestion seam ready for AirBooksWorld</div></aside>}</section></main>}
+import Link from "next/link";
+import { LibraryShelf } from "@/components/library/LibraryShelf";
+import { fetchLibraryBooks } from "@/lib/library";
+
+export default async function Home() {
+  let books=[];
+  let total=0;
+  let error="";
+  try {
+    const result=await fetchLibraryBooks(120);
+    books=result.books;
+    total=result.total;
+  } catch (e:any) {
+    error=e?.message||"The library backend is unavailable.";
+  }
+
+  return <main>
+    {error ? (
+      <div className="library-world">
+        <div className="empty-library">
+          <h1>AirPages</h1>
+          <p>{error}</p>
+          <Link href="/read/airpages-demo">Open the presentation demo →</Link>
+        </div>
+      </div>
+    ) : <LibraryShelf books={books}/>}
+  </main>;
+}
