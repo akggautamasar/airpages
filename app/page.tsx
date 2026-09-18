@@ -20,7 +20,7 @@ export default async function Home() {
         <div className="empty-library">
           <h1>AirPages</h1>
           <p>{error}</p>
-          <Link href="/read/airpages-demo">Open the presentation demo →</Link>
+          <p>Refresh after the AirBooksWorld service is available.</p>
         </div>
       </div>
     ) : <LibraryShelf books={books}/>}
