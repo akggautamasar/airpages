@@ -11,11 +11,12 @@ export function ThreePaperCanvas({
   presentation: PresentationSettings;
 }) {
   const params = new URLSearchParams({ variant: "original" });
-  params.set("page", page.id);
+  params.set("page", String(page.index));
+
   return (
     <div
       className="three-paper-host"
-      data-page={page.id}
+      data-page={page.index}
       data-depth={presentation.depth}
       data-shadow={presentation.shadow}
       data-warmth={presentation.warmth}
