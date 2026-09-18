@@ -1,0 +1,3 @@
+export type PresentationSettings={id:string;name:string;background:string;depth:number;shadow:number;warmth:number};
+export const defaultPresentation:PresentationSettings={id:"paper-study",name:"Paper Study",background:"#f4f0e7",depth:.72,shadow:.58,warmth:.42};
+export const presentationPresets:Record<string,PresentationSettings>={paper:defaultPresentation,gallery:{id:"gallery",name:"Gallery",background:"#14151a",depth:.48,shadow:.85,warmth:.18},nocturne:{id:"nocturne",name:"Nocturne",background:"#08080a",depth:.88,shadow:.72,warmth:.06},warm:{id:"warm",name:"Warm Library",background:"#30241c",depth:.68,shadow:.62,warmth:.82}};
