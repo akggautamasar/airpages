@@ -14,3 +14,6 @@
 .airpages:not(.dark) .topbar{background:rgba(255,255,255,.35)}
 .airpages:not(.dark) .icon-btn,.airpages:not(.dark) .study-toolbar button,.airpages:not(.dark) .preset{background:rgba(255,255,255,.48)}
 @media(max-width:760px){.three-paper-page-badge{left:10px;top:10px}.three-paper-host{border-radius:14px}}
+
+.air-read{height:100vh;min-height:100dvh;overflow:hidden;background:#090a0c}
+.air-read>div{height:100%}
