@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, Download, List, Loader2, Maximize2, Minus, Plus } from "lucide-react";
 import { getDownloadUrl, getFileExt, getReaderFileUrl, type BackendBook } from "@/lib/backend";
 
@@ -177,7 +178,7 @@ export function BookReader({ book }: Props) {
     if (isEpub && chapters.length) setChapterHtml(chapters[page - 1]?.html || "");
   }, [page, chapters, isEpub]);
 
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "touch") return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width - 0.5;
