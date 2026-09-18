@@ -38,7 +38,7 @@ export function BookReader({ book }: Props) {
   const [chapters, setChapters] = useState<EpubChapter[]>([]);
   const [fontSize, setFontSize] = useState(100);
   const [tocOpen, setTocOpen] = useState(false);
-  const [tilt, setTilt] = useState({ x: -1.5, y: -4 });
+  const [tilt, setTilt] = useState({ x: 2.2, y: -8, z: -0.7 });
   const [fullscreen, setFullscreen] = useState(false);
   const [turn, setTurn] = useState<"idle" | "next" | "prev">("idle");
   const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -185,10 +185,10 @@ export function BookReader({ book }: Props) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width - 0.5;
     const y = (e.clientY - rect.top) / rect.height - 0.5;
-    setTilt({ x: -y * 5, y: -x * 7 });
+    setTilt({ x: 2.2 - y * 9, y: -8 - x * 13, z: -0.7 + x * 1.4 });
   };
 
-  const resetTilt = () => setTilt({ x: -1.5, y: -4 });
+  const resetTilt = () => setTilt({ x: 2.2, y: -8, z: -0.7 });
   const changePage = (direction: "next" | "prev") => {
     if (turn !== "idle" || !total) return;
     const target = direction === "next" ? Math.min(total, page + 1) : Math.max(1, page - 1);
@@ -214,7 +214,7 @@ export function BookReader({ book }: Props) {
   };
 
   const paperStyle = useMemo(() => ({
-    transform: `perspective(1800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) rotateZ(-0.35deg)`,
+    transform: `perspective(1200px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) rotateZ(${tilt.z}deg) translateZ(0)`,
   }), [tilt]);
 
   if (error) {
@@ -263,33 +263,35 @@ export function BookReader({ book }: Props) {
         .reader-title{min-width:0;display:flex;flex-direction:column;gap:2px}.reader-title strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55vw}.reader-kicker{font:500 8px/1 DM Mono,monospace;letter-spacing:.16em;color:#8b857c}
         .reader-actions{display:flex;align-items:center;gap:4px}.reader-actions button,.reader-actions a{height:32px;min-width:32px;padding:0 8px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);color:#aaa;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}.reader-actions span{font:10px DM Mono,monospace;color:#777;min-width:34px;text-align:center}
         .reader-stage{position:relative;flex:1;min-height:0;overflow:hidden;display:grid;place-items:center;padding:28px;background:radial-gradient(circle at 50% 38%,rgba(255,255,255,.08),transparent 35%),linear-gradient(145deg,#0d0e11,#050506);touch-action:pan-y}
-        .reader-paper{position:relative;width:min(72vw,780px);height:min(82vh,900px);max-height:calc(100% - 20px);background:#f5f0e7;color:#211f1b;border:1px solid rgba(255,255,255,.32);border-radius:3px 11px 10px 4px;overflow:hidden;transform-origin:center right;transition:transform .28s cubic-bezier(.2,.7,.2,1),box-shadow .28s ease;transform-style:preserve-3d;backface-visibility:hidden;will-change:transform;box-shadow:28px 34px 80px rgba(0,0,0,.52),8px 10px 25px rgba(0,0,0,.22),inset 0 0 0 1px rgba(65,51,38,.12)}
-        .reader-paper:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,.5),transparent 9%,transparent 89%,rgba(35,25,17,.11)),radial-gradient(ellipse at 35% 20%,rgba(255,255,255,.55),transparent 45%);z-index:2;mix-blend-mode:soft-light}
+        .reader-paper{position:relative;width:min(72vw,780px);height:min(82vh,900px);max-height:calc(100% - 20px);background:#f5f0e7;color:#211f1b;border:1px solid rgba(255,255,255,.32);border-radius:3px 11px 10px 4px;overflow:hidden;transform-origin:center right;transition:transform .28s cubic-bezier(.2,.7,.2,1),box-shadow .28s ease;transform-style:preserve-3d;backface-visibility:hidden;will-change:transform;box-shadow:28px 42px 90px rgba(0,0,0,.58),14px 18px 34px rgba(0,0,0,.28),-8px 2px 18px rgba(255,255,255,.08),inset 0 0 0 1px rgba(65,51,38,.12);transform-style:preserve-3d;perspective:1200px}
+        .reader-paper:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(92deg,rgba(255,255,255,.72) 0%,rgba(255,255,255,.18) 8%,transparent 24%,transparent 78%,rgba(35,25,17,.18) 100%),radial-gradient(ellipse at 28% 18%,rgba(255,255,255,.62),transparent 42%);z-index:2;mix-blend-mode:soft-light}
+.reader-paper .paper-inner{transform:translateZ(1px)}
+.reader-paper:after{content:"";position:absolute;inset:2px -7px -7px 2px;pointer-events:none;border-radius:4px 13px 12px 5px;background:linear-gradient(105deg,rgba(255,255,255,.22),transparent 18%,rgba(60,43,30,.14));box-shadow:5px 8px 0 rgba(224,217,204,.7),9px 12px 0 rgba(205,196,181,.34),15px 18px 22px rgba(0,0,0,.28);transform:translateZ(-2px);z-index:-1}
         .reader-paper.paper-turn-next{animation:airPaperNext .62s cubic-bezier(.22,.72,.2,1) both}
 .reader-paper.paper-turn-prev{animation:airPaperPrev .62s cubic-bezier(.22,.72,.2,1) both;transform-origin:center left}
 @keyframes airPaperNext{
-  0%{transform:perspective(1800px) rotateX(0deg) rotateY(0deg) rotateZ(-.35deg) translateX(0);filter:brightness(1)}
-  42%{transform:perspective(1800px) rotateX(1deg) rotateY(-82deg) rotateZ(-1deg) translateX(8px);filter:brightness(.78)}
-  50%{transform:perspective(1800px) rotateX(1deg) rotateY(-92deg) rotateZ(-1deg) translateX(10px);filter:brightness(.7)}
-  100%{transform:perspective(1800px) rotateX(0deg) rotateY(0deg) rotateZ(-.35deg) translateX(0);filter:brightness(1)}
+  0%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
+  42%{transform:perspective(1200px) rotateX(5deg) rotateY(-78deg) rotateZ(-2deg) translateX(10px) translateZ(18px);filter:brightness(.78)}
+  50%{transform:perspective(1200px) rotateX(6deg) rotateY(-104deg) rotateZ(-2deg) translateX(14px) translateZ(24px);filter:brightness(.62)}
+  100%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
 }
 @keyframes airPaperPrev{
-  0%{transform:perspective(1800px) rotateX(0deg) rotateY(0deg) rotateZ(-.35deg) translateX(0);filter:brightness(1)}
-  42%{transform:perspective(1800px) rotateX(1deg) rotateY(82deg) rotateZ(1deg) translateX(-8px);filter:brightness(.78)}
-  50%{transform:perspective(1800px) rotateX(1deg) rotateY(92deg) rotateZ(1deg) translateX(-10px);filter:brightness(.7)}
-  100%{transform:perspective(1800px) rotateX(0deg) rotateY(0deg) rotateZ(-.35deg) translateX(0);filter:brightness(1)}
+  0%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
+  42%{transform:perspective(1200px) rotateX(5deg) rotateY(78deg) rotateZ(2deg) translateX(-10px) translateZ(18px);filter:brightness(.78)}
+  50%{transform:perspective(1200px) rotateX(6deg) rotateY(104deg) rotateZ(2deg) translateX(-14px) translateZ(24px);filter:brightness(.62)}
+  100%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
 }
 .paper-inner{position:absolute;inset:0;overflow:auto;padding:28px}.pdf-paper .paper-inner{display:grid;place-items:center;padding:22px}.pdf-paper img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;box-shadow:0 5px 18px rgba(0,0,0,.08)}
         .epub-content{height:100%;overflow:auto;padding:22px 34px;font-family:Georgia,serif;line-height:1.72}.epub-content img{max-width:100%;height:auto}.epub-content h1,.epub-content h2,.epub-content h3{line-height:1.15}.epub-content p{margin:0 0 1em}.epub-content a{color:#80553d}
         .paper-edge{position:absolute;right:0;top:0;bottom:0;width:11px;background:linear-gradient(90deg,transparent,rgba(44,32,22,.12));pointer-events:none;z-index:3;transform:translateZ(2px)}
-.reader-paper:after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;box-shadow:inset -12px 0 22px rgba(42,29,20,.08),inset 0 -8px 18px rgba(42,29,20,.04);z-index:4}
+.reader-paper .paper-inner:after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset -18px 0 28px rgba(42,29,20,.12),inset 0 -10px 20px rgba(42,29,20,.05);z-index:4}
 .reader-paper.paper-turn-next .paper-edge,.reader-paper.paper-turn-prev .paper-edge{opacity:.8}
         .paper-shadow{position:absolute;width:min(70vw,760px);height:60px;bottom:8%;background:rgba(0,0,0,.5);filter:blur(28px);transform:rotate(-1deg);border-radius:50%}
         .reader-loading{height:100%;display:grid;place-items:center;align-content:center;gap:10px;color:#7d756d;font:11px DM Mono,monospace;text-transform:uppercase;letter-spacing:.12em}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
         .reader-bottom{height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid rgba(255,255,255,.08);background:#090a0c}.reader-bottom button{height:30px;width:32px;border:1px solid rgba(255,255,255,.08);border-radius:7px;background:rgba(255,255,255,.04);color:#aaa}.reader-bottom button:disabled{opacity:.25}.reader-bottom span{font:10px DM Mono,monospace;color:#777;min-width:64px;text-align:center}.progress{width:min(220px,25vw);height:2px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;background:#b17652}
         .reader-toc{position:absolute;left:16px;top:16px;bottom:16px;width:min(330px,82vw);background:rgba(17,17,19,.96);border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 25px 80px rgba(0,0,0,.45);z-index:10;overflow:auto}.toc-head{display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid rgba(255,255,255,.08)}.toc-head button{background:none;border:0;color:#aaa;font-size:20px}.reader-toc>button{display:block;width:100%;padding:11px 14px;text-align:left;background:none;border:0;color:#999;font-size:12px}.reader-toc>button.active,.reader-toc>button:hover{background:rgba(177,118,82,.12);color:#eee}
         .reader-error{height:100%;display:grid;place-items:center;align-content:center;gap:12px;background:#090a0c;color:#999;padding:30px;text-align:center}.reader-error a{color:#b17652}
-        @media(max-width:760px){.air-reader-top{height:54px}.reader-actions span{display:none}.reader-stage{padding:10px}.reader-paper{width:94vw;height:78vh;max-height:none}.epub-content{padding:18px 20px;font-size:15px}.paper-shadow{bottom:9%;width:82vw}.reader-bottom{height:44px}.progress{width:25vw}}
+        @media(max-width:760px){.air-reader-top{height:54px}.reader-actions span{display:none}.reader-stage{padding:10px}.reader-paper{width:88vw;height:76vh;max-height:none}.epub-content{padding:18px 20px;font-size:15px}.paper-shadow{bottom:9%;width:82vw}.reader-bottom{height:44px}.progress{width:25vw}}
       `}</style>
     </div>
   );
