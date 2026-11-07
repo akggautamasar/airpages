@@ -32,6 +32,7 @@ export function ReadBookClient({ id }: { id: string }) {
             const info = await fetchReaderInfo(id);
             if (cancelled) return;
             if (info.reader_status === "ready") {
+              setBook({ ...nextBook, reader_format: info.reader_format || nextBook.reader_format });
               setStatus("ready");
               setMessage("");
               return;
@@ -79,5 +80,5 @@ export function ReadBookClient({ id }: { id: string }) {
     );
   }
 
-  return <main className="air-read"><BookReader book={book}/></main>;
+  return <main className="air-read"><BookReader key={book.id} book={book}/></main>;
 }

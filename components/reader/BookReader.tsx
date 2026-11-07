@@ -1,299 +1,203 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent } from "react";
-import { ChevronLeft, ChevronRight, Download, List, Loader2, Maximize2, Minus, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PDFDocumentProxy, PDFDocumentLoadingTask } from "pdfjs-dist";
+import { ArrowLeft, Bookmark, BookmarkCheck, BookOpen, ChevronLeft, ChevronRight, Download, List, Maximize, Minus, Plus, Settings2, X } from "lucide-react";
 import { getDownloadUrl, getFileExt, getReaderFileUrl, type BackendBook } from "@/lib/backend";
+import { openEpub, readChapter } from "@/lib/epub";
+import { PdfPage } from "./PdfPage";
+import "./reader.css";
 
-type EpubChapter = { title: string; html: string };
-type Props = { book: BackendBook };
+type Epub = Awaited<ReturnType<typeof openEpub>>;
+type Panel = "Contents" | "Bookmarks" | "Reading settings";
+type Theme = "Paper" | "Sepia" | "Night";
 
-function safeEpubHtml(input: string) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(input, "text/html");
-  doc.querySelectorAll("script,iframe,object,embed,form,video,audio").forEach((el) => el.remove());
-  doc.querySelectorAll("*").forEach((el) => {
-    [...el.attributes].forEach((attr) => {
-      if (/^on/i.test(attr.name) || /javascript:/i.test(attr.value)) el.removeAttribute(attr.name);
-    });
-  });
-  return doc.body?.innerHTML || "";
+function readLocal(key: string) {
+  try { return JSON.parse(localStorage.getItem(key) || "{}") || {}; } catch { return {}; }
 }
 
-async function loadPdf(url: string) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`;
-  return pdfjs.getDocument({ url, withCredentials: false }).promise;
+function saveLocal(key: string, value: object) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
-export function BookReader({ book }: Props) {
-  const ext = getFileExt(book.filename);
-  const fileUrl = ext === "PDF" ? getDownloadUrl(book.id) : getReaderFileUrl(book.id);
+export function BookReader({ book }: { book: BackendBook }) {
+  const originalFormat = getFileExt(book.filename);
+  const format = originalFormat === "PDF" ? "PDF" : (book.reader_format || originalFormat).toUpperCase();
+  const isPdf = format.includes("PDF");
+  const url = originalFormat === "PDF" ? getDownloadUrl(book.id) : getReaderFileUrl(book.id);
+  const key = "airpages:reader:" + book.id;
+  const [pdf, setPdf] = useState<PDFDocumentProxy>();
+  const [epub, setEpub] = useState<Epub>();
+  const [chapter, setChapter] = useState<{ page: number; html: string; title?: string | null }>();
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(book.page_count || book.pages || 0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [chapterHtml, setChapterHtml] = useState("");
-  const [chapters, setChapters] = useState<EpubChapter[]>([]);
-  const [fontSize, setFontSize] = useState(100);
-  const [tocOpen, setTocOpen] = useState(false);
-  const [tilt, setTilt] = useState({ x: 2.2, y: -8, z: -0.7 });
-  const [fullscreen, setFullscreen] = useState(false);
-  const [turn, setTurn] = useState<"idle" | "next" | "prev">("idle");
-  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  const [marks, setMarks] = useState<number[]>([]);
+  const [theme, setTheme] = useState<Theme>("Paper");
+  const [textMode, setTextMode] = useState(false);
+  const [fit, setFit] = useState("page");
+  const [zoom, setZoom] = useState(100);
+  const [motion, setMotion] = useState(true);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [panel, setPanel] = useState<Panel>("Contents");
+  const [entry, setEntry] = useState("1");
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const shell = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const anchor = useRef("");
+  const total = pdf?.numPages || epub?.chapters.length || 0;
+  const unit = isPdf ? "Page" : "Chapter";
 
-  const isPdf = ext === "PDF";
-  const isEpub = ext === "EPUB";
-  const title = book.title || book.filename;
+  useEffect(() => {
+    const prefs = readLocal("airpages:reader-preferences");
+    if (["Paper", "Sepia", "Night"].includes(prefs.theme)) setTheme(prefs.theme);
+    if (prefs.fit === "width") setFit("width");
+    setMotion(prefs.motion !== false);
+    setSettingsReady(true);
+  }, []);
+  useEffect(() => {
+    if (settingsReady) saveLocal("airpages:reader-preferences", { theme, fit, motion });
+  }, [settingsReady, theme, fit, motion]);
 
-  const renderPdfPage = useCallback(async (pdf: any, pageNumber: number) => {
-    setLoading(true);
-    setError(null);
-    const pdfPage = await pdf.getPage(pageNumber);
-    const baseViewport = pdfPage.getViewport({ scale: 1 });
-    const maxWidth = Math.min(window.innerWidth < 760 ? window.innerWidth - 38 : 820, 900);
-    const scale = Math.max(0.6, Math.min(2.0, maxWidth / baseViewport.width));
-    const viewport = pdfPage.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.floor(viewport.width * ratio);
-    canvas.height = Math.floor(viewport.height * ratio);
-    canvas.style.width = `${viewport.width}px`;
-    canvas.style.height = `${viewport.height}px`;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    if (!ctx) throw new Error("Could not create PDF canvas");
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-    setImageUrl(canvas.toDataURL("image/jpeg", 0.94));
-    setChapterHtml("");
-    setLoading(false);
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    let task: PDFDocumentLoadingTask | undefined;
+    async function open() {
+      setError("");
+      let doc: PDFDocumentProxy | undefined, publication: Epub | undefined;
+      if (isPdf) {
+        const engine = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (!active) return;
+        engine.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs?v=" + engine.version;
+        task = engine.getDocument({ url, isEvalSupported: false });
+        doc = await task.promise;
+      } else {
+        publication = await openEpub(url, controller.signal);
+      }
+      if (!active) return;
+      const count = doc?.numPages || publication?.chapters.length || 1;
+      const saved = readLocal(key);
+      const savedPage = Number(saved.page);
+      setPage(Number.isInteger(savedPage) ? Math.max(1, Math.min(count, savedPage)) : 1);
+      setMarks(Array.isArray(saved.marks) ? saved.marks.filter((n: number) => Number.isInteger(n) && n > 0 && n <= count) : []);
+      setZoom(Number.isInteger(saved.zoom) ? Math.max(60, Math.min(220, saved.zoom)) : 100);
+      setPdf(doc);
+      setEpub(publication);
+    }
+    open().catch(() => { if (active) setError("The book could not be opened. Try again or download the original."); });
+    return () => { active = false; controller.abort(); void task?.destroy(); };
+  }, [url, key, isPdf, retry]);
+
+  useEffect(() => {
+    if (total) saveLocal(key, { page, marks, zoom });
+  }, [key, total, page, marks, zoom]);
+
+  useEffect(() => {
+    const node = stage.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([record]) => {
+      setSize({ width: Math.floor(record.contentRect.width), height: Math.floor(record.contentRect.height) });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    async function initPdf() {
-      if (!isPdf) return;
-      setLoading(true);
-      try {
-        const pdf = await loadPdf(fileUrl);
-        if (cancelled) return;
-        setTotal(pdf.numPages);
-        await renderPdfPage(pdf, page);
-        (window as any).__airpagesPdf = pdf;
-      } catch (e: any) {
-        if (!cancelled) { setError(e?.message || "Could not open this PDF."); setLoading(false); }
+    stage.current?.scrollTo(0, 0);
+    setEntry(String(page));
+    if (!epub) return;
+    let active = true;
+    readChapter(epub.zip, epub.chapters[page - 1]).then(result => {
+      if (active) setChapter({ ...result, page });
+    }).catch(() => { if (active) setError("This chapter could not be opened."); });
+    return () => { active = false; };
+  }, [epub, page]);
+
+  useEffect(() => {
+    if (chapter && anchor.current) {
+      document.getElementById("ap-anchor-" + anchor.current)?.scrollIntoView({ block: "start" });
+      anchor.current = "";
+    }
+  }, [chapter]);
+
+  const go = useCallback((target: number) => {
+    if (!total || !Number.isInteger(target)) return;
+    setPage(Math.max(1, Math.min(total, target)));
+    dialog.current?.close();
+  }, [total]);
+
+  useEffect(() => {
+    function navigate(e: KeyboardEvent) {
+      if (dialog.current?.open || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey || (e.target instanceof HTMLElement && e.target.closest("input,select,textarea,[contenteditable]"))) return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        go(page + (e.key === "ArrowRight" ? 1 : -1));
       }
     }
-    initPdf();
-    return () => { cancelled = true; };
-  }, [fileUrl, isPdf, renderPdfPage]);
+    window.addEventListener("keydown", navigate);
+    return () => window.removeEventListener("keydown", navigate);
+  }, [go, page]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function initEpub() {
-      if (!isEpub) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const JSZip = (await import("jszip")).default;
-        const response = await fetch(fileUrl);
-        if (!response.ok) throw new Error(`Failed to load EPUB (${response.status})`);
-        const zip = await JSZip.loadAsync(await response.arrayBuffer());
-        const container = await zip.file("META-INF/container.xml")?.async("string");
-        if (!container) throw new Error("Invalid EPUB: missing container.xml");
-        const parser = new DOMParser();
-        const containerDoc = parser.parseFromString(container, "text/xml");
-        const opfPath = containerDoc.querySelector("rootfile")?.getAttribute("full-path");
-        if (!opfPath) throw new Error("Invalid EPUB: package path missing");
-        const baseDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
-        const opf = await zip.file(opfPath)?.async("string");
-        if (!opf) throw new Error("Invalid EPUB: package file missing");
-        const opfDoc = parser.parseFromString(opf, "text/xml");
-        const manifest = new Map<string, string>();
-        opfDoc.querySelectorAll("manifest item").forEach((item) => {
-          const id = item.getAttribute("id");
-          const href = item.getAttribute("href");
-          if (id && href) manifest.set(id, href);
-        });
-        const paths: string[] = [];
-        opfDoc.querySelectorAll("spine itemref").forEach((ref) => {
-          const id = ref.getAttribute("idref");
-          const href = id ? manifest.get(id) : null;
-          if (href) paths.push(baseDir + href);
-        });
-        if (!paths.length) throw new Error("This EPUB has no readable chapters.");
-
-        const loaded: EpubChapter[] = [];
-        for (let i = 0; i < paths.length; i++) {
-          const path = paths[i];
-          const raw = await zip.file(path)?.async("string");
-          if (!raw) continue;
-          const chapterDoc = parser.parseFromString(raw, "text/html");
-          const chapterDir = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
-          for (const img of [...chapterDoc.querySelectorAll("img[src]")]) {
-            const src = img.getAttribute("src") || "";
-            if (/^(data:|https?:|#)/i.test(src)) continue;
-            const clean = decodeURIComponent(src.split("#")[0].split("?")[0]);
-            const imgFile = zip.file(chapterDir + clean);
-            if (!imgFile) continue;
-            const bytes = await imgFile.async("base64");
-            const type = /\.png$/i.test(clean) ? "image/png" : /\.svg$/i.test(clean) ? "image/svg+xml" : /\.webp$/i.test(clean) ? "image/webp" : "image/jpeg";
-            img.setAttribute("src", `data:${type};base64,${bytes}`);
-          }
-          for (const link of [...chapterDoc.querySelectorAll('link[rel="stylesheet"]')]) {
-            const href = link.getAttribute("href") || "";
-            const cssFile = zip.file(chapterDir + decodeURIComponent(href.split("?")[0]));
-            if (cssFile) {
-              const style = chapterDoc.createElement("style");
-              style.textContent = (await cssFile.async("string")).replace(/@font-face\\s*\\{[^}]*\\}/gi, "");
-              chapterDoc.head.appendChild(style);
-            }
-            link.remove();
-          }
-          const heading = chapterDoc.querySelector("h1,h2,h3")?.textContent?.trim();
-          loaded.push({ title: heading || path.split("/").pop()?.replace(/\\.(x?html?)$/i, "") || `Chapter ${i + 1}`, html: safeEpubHtml(chapterDoc.documentElement.outerHTML) });
-        }
-        if (cancelled) return;
-        setChapters(loaded);
-        setTotal(loaded.length);
-        setPage(1);
-        setChapterHtml(loaded[0]?.html || "");
-        setImageUrl(null);
-        setLoading(false);
-      } catch (e: any) {
-        if (!cancelled) { setError(e?.message || "Could not open this EPUB."); setLoading(false); }
-      }
-    }
-    initEpub();
-    return () => { cancelled = true; };
-  }, [fileUrl, isEpub]);
-
-  useEffect(() => {
-    if (!isPdf || page < 1) return;
-    const pdf = (window as any).__airpagesPdf;
-    if (pdf) renderPdfPage(pdf, page).catch((e: any) => setError(e?.message || "Could not render page."));
-  }, [page, isPdf, renderPdfPage]);
-
-  useEffect(() => {
-    if (isEpub && chapters.length) setChapterHtml(chapters[page - 1]?.html || "");
-  }, [page, chapters, isEpub]);
-
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === "touch") return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    setTilt({ x: 2.2 - y * 9, y: -8 - x * 13, z: -0.7 + x * 1.4 });
-  };
-
-  const resetTilt = () => setTilt({ x: 2.2, y: -8, z: -0.7 });
-  const changePage = (direction: "next" | "prev") => {
-    if (turn !== "idle" || !total) return;
-    const target = direction === "next" ? Math.min(total, page + 1) : Math.max(1, page - 1);
-    if (target === page) return;
-    setTurn(direction);
-    turnTimer.current = setTimeout(() => {
-      setPage(target);
-      requestAnimationFrame(() => requestAnimationFrame(() => setTurn("idle")));
-    }, 300);
-  };
-  const prev = () => changePage("prev");
-  const next = () => changePage("next");
-
-  useEffect(() => () => {
-    if (turnTimer.current) clearTimeout(turnTimer.current);
-  }, []);
-
-  const toggleFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await stageRef.current?.requestFullscreen();
-    } catch {}
-  };
-
-  const paperStyle = useMemo(() => ({
-    transform: `perspective(1200px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) rotateZ(${tilt.z}deg) translateZ(0)`,
-  }), [tilt]);
-
-  if (error) {
-    return <div className="reader-error"><p>{error}</p><a href={getDownloadUrl(book.id)} download>Download the original file</a></div>;
+  function show(next: Panel) {
+    setPanel(next);
+    dialog.current?.showModal();
   }
-
-  return (
-    <div className="air-reader">
-      <div className="air-reader-top">
-        <div className="reader-title"><span className="reader-kicker">{ext} · AIRPAGES</span><strong>{title}</strong></div>
-        <div className="reader-actions">
-          <a href="/" aria-label="Back to library"><ChevronLeft size={17}/></a>
-          {isEpub && <button onClick={() => setTocOpen((v) => !v)} aria-label="Contents"><List size={17}/></button>}
-          <button onClick={() => setFontSize((s) => Math.max(70, s - 10))} aria-label="Smaller text"><Minus size={16}/></button>
-          <span>{fontSize}%</span>
-          <button onClick={() => setFontSize((s) => Math.min(180, s + 10))} aria-label="Larger text"><Plus size={16}/></button>
-          <a href={getDownloadUrl(book.id)} download aria-label="Download"><Download size={17}/></a>
-          <button onClick={toggleFullscreen} aria-label="Fullscreen"><Maximize2 size={17}/></button>
-        </div>
-      </div>
-
-      <div className="reader-stage" ref={stageRef} onPointerMove={onPointerMove} onPointerLeave={resetTilt}>
-        <div className="paper-shadow" />
-        <article className={`reader-paper ${isEpub ? "epub-paper" : "pdf-paper"} paper-turn-${turn}`} style={paperStyle}>
-          <div className="paper-inner">
-            {loading ? <div className="reader-loading"><Loader2 className="spin" size={28}/><span>Preparing {ext}…</span></div> :
-             isPdf && imageUrl ? <img src={imageUrl} alt={`Page ${page} of ${title}`} /> :
-             isEpub ? <div className="epub-content" style={{ fontSize: `${fontSize}%` }} dangerouslySetInnerHTML={{ __html: chapterHtml }} /> :
-             null}
-          </div>
-          <div className="paper-edge" />
-        </article>
-
-        {tocOpen && isEpub && <aside className="reader-toc"><div className="toc-head"><b>Contents</b><button onClick={() => setTocOpen(false)}>×</button></div>{chapters.map((chapter, i) => <button key={i} className={i + 1 === page ? "active" : ""} onClick={() => { setPage(i + 1); setTocOpen(false); }}>{chapter.title}</button>)}</aside>}
-      </div>
-
-      <div className="reader-bottom">
-        <button aria-label="Previous page" onClick={prev} disabled={page <= 1 || turn !== "idle"}><ChevronLeft size={18}/></button>
-        <span>{page} / {total || "—"}</span>
-        <button aria-label="Next page" onClick={next} disabled={page >= (total || 1) || turn !== "idle"}><ChevronRight size={18}/></button>
-        <div className="progress"><i style={{ width: `${total ? (page / total) * 100 : 0}%` }}/></div>
-      </div>
-
-      <style jsx>{`
-        .air-reader{height:100%;min-height:100%;display:flex;flex-direction:column;background:#090a0c;color:#eee}
-        .air-reader-top{height:58px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(10,10,12,.86);backdrop-filter:blur(16px);z-index:5}
-        .reader-title{min-width:0;display:flex;flex-direction:column;gap:2px}.reader-title strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55vw}.reader-kicker{font:500 8px/1 DM Mono,monospace;letter-spacing:.16em;color:#8b857c}
-        .reader-actions{display:flex;align-items:center;gap:4px}.reader-actions button,.reader-actions a{height:32px;min-width:32px;padding:0 8px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);color:#aaa;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}.reader-actions span{font:10px DM Mono,monospace;color:#777;min-width:34px;text-align:center}
-        .reader-stage{position:relative;flex:1;min-height:0;overflow:hidden;display:grid;place-items:center;padding:28px;background:radial-gradient(circle at 50% 38%,rgba(255,255,255,.08),transparent 35%),linear-gradient(145deg,#0d0e11,#050506);touch-action:pan-y}
-        .reader-paper{position:relative;width:min(72vw,780px);height:min(82vh,900px);max-height:calc(100% - 20px);background:#f5f0e7;color:#211f1b;border:1px solid rgba(255,255,255,.32);border-radius:3px 11px 10px 4px;overflow:hidden;transform-origin:center right;transition:transform .28s cubic-bezier(.2,.7,.2,1),box-shadow .28s ease;transform-style:preserve-3d;backface-visibility:hidden;will-change:transform;box-shadow:28px 42px 90px rgba(0,0,0,.58),14px 18px 34px rgba(0,0,0,.28),-8px 2px 18px rgba(255,255,255,.08),inset 0 0 0 1px rgba(65,51,38,.12);transform-style:preserve-3d;perspective:1200px}
-        .reader-paper:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(92deg,rgba(255,255,255,.72) 0%,rgba(255,255,255,.18) 8%,transparent 24%,transparent 78%,rgba(35,25,17,.18) 100%),radial-gradient(ellipse at 28% 18%,rgba(255,255,255,.62),transparent 42%);z-index:2;mix-blend-mode:soft-light}
-.reader-paper .paper-inner{transform:translateZ(1px)}
-.reader-paper:after{content:"";position:absolute;inset:2px -7px -7px 2px;pointer-events:none;border-radius:4px 13px 12px 5px;background:linear-gradient(105deg,rgba(255,255,255,.22),transparent 18%,rgba(60,43,30,.14));box-shadow:5px 8px 0 rgba(224,217,204,.7),9px 12px 0 rgba(205,196,181,.34),15px 18px 22px rgba(0,0,0,.28);transform:translateZ(-2px);z-index:-1}
-        .reader-paper.paper-turn-next{animation:airPaperNext .62s cubic-bezier(.22,.72,.2,1) both}
-.reader-paper.paper-turn-prev{animation:airPaperPrev .62s cubic-bezier(.22,.72,.2,1) both;transform-origin:center left}
-@keyframes airPaperNext{
-  0%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
-  42%{transform:perspective(1200px) rotateX(5deg) rotateY(-78deg) rotateZ(-2deg) translateX(10px) translateZ(18px);filter:brightness(.78)}
-  50%{transform:perspective(1200px) rotateX(6deg) rotateY(-104deg) rotateZ(-2deg) translateX(14px) translateZ(24px);filter:brightness(.62)}
-  100%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
-}
-@keyframes airPaperPrev{
-  0%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
-  42%{transform:perspective(1200px) rotateX(5deg) rotateY(78deg) rotateZ(2deg) translateX(-10px) translateZ(18px);filter:brightness(.78)}
-  50%{transform:perspective(1200px) rotateX(6deg) rotateY(104deg) rotateZ(2deg) translateX(-14px) translateZ(24px);filter:brightness(.62)}
-  100%{transform:perspective(1200px) rotateX(2.2deg) rotateY(-8deg) rotateZ(-.7deg) translateX(0) translateZ(0);filter:brightness(1)}
-}
-.paper-inner{position:absolute;inset:0;overflow:auto;padding:28px}.pdf-paper .paper-inner{display:grid;place-items:center;padding:22px}.pdf-paper img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;box-shadow:0 5px 18px rgba(0,0,0,.08)}
-        .epub-content{height:100%;overflow:auto;padding:22px 34px;font-family:Georgia,serif;line-height:1.72}.epub-content img{max-width:100%;height:auto}.epub-content h1,.epub-content h2,.epub-content h3{line-height:1.15}.epub-content p{margin:0 0 1em}.epub-content a{color:#80553d}
-        .paper-edge{position:absolute;right:0;top:0;bottom:0;width:11px;background:linear-gradient(90deg,transparent,rgba(44,32,22,.12));pointer-events:none;z-index:3;transform:translateZ(2px)}
-.reader-paper .paper-inner:after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset -18px 0 28px rgba(42,29,20,.12),inset 0 -10px 20px rgba(42,29,20,.05);z-index:4}
-.reader-paper.paper-turn-next .paper-edge,.reader-paper.paper-turn-prev .paper-edge{opacity:.8}
-        .paper-shadow{position:absolute;width:min(70vw,760px);height:60px;bottom:8%;background:rgba(0,0,0,.5);filter:blur(28px);transform:rotate(-1deg);border-radius:50%}
-        .reader-loading{height:100%;display:grid;place-items:center;align-content:center;gap:10px;color:#7d756d;font:11px DM Mono,monospace;text-transform:uppercase;letter-spacing:.12em}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-        .reader-bottom{height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid rgba(255,255,255,.08);background:#090a0c}.reader-bottom button{height:30px;width:32px;border:1px solid rgba(255,255,255,.08);border-radius:7px;background:rgba(255,255,255,.04);color:#aaa}.reader-bottom button:disabled{opacity:.25}.reader-bottom span{font:10px DM Mono,monospace;color:#777;min-width:64px;text-align:center}.progress{width:min(220px,25vw);height:2px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;background:#b17652}
-        .reader-toc{position:absolute;left:16px;top:16px;bottom:16px;width:min(330px,82vw);background:rgba(17,17,19,.96);border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 25px 80px rgba(0,0,0,.45);z-index:10;overflow:auto}.toc-head{display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid rgba(255,255,255,.08)}.toc-head button{background:none;border:0;color:#aaa;font-size:20px}.reader-toc>button{display:block;width:100%;padding:11px 14px;text-align:left;background:none;border:0;color:#999;font-size:12px}.reader-toc>button.active,.reader-toc>button:hover{background:rgba(177,118,82,.12);color:#eee}
-        .reader-error{height:100%;display:grid;place-items:center;align-content:center;gap:12px;background:#090a0c;color:#999;padding:30px;text-align:center}.reader-error a{color:#b17652}
-        @media(max-width:760px){.air-reader-top{height:54px}.reader-actions span{display:none}.reader-stage{padding:10px}.reader-paper{width:88vw;height:76vh;max-height:none}.epub-content{padding:18px 20px;font-size:15px}.paper-shadow{bottom:9%;width:82vw}.reader-bottom{height:44px}.progress{width:25vw}}
-      `}</style>
+  function restart() {
+    setPdf(undefined); setEpub(undefined); setChapter(undefined); setError(""); setRetry(n => n + 1);
+  }
+  const marked = marks.includes(page);
+  const currentTitle = epub && (epub.titles.get(epub.chapters[page - 1]) || (chapter?.page === page && chapter.title));
+  return <div className="folio" data-theme={theme} data-motion={motion} ref={shell}>
+    <header className="folio-head">
+      <a href="/" aria-label="Back to library" title="Back to library"><ArrowLeft/></a>
+      <div className="folio-identity"><small>AirPages · {isPdf ? "PDF" : "EPUB"}</small><h1>{book.title || book.filename}</h1></div>
+      <button aria-label="Contents" title="Contents" onClick={() => show("Contents")}><List/></button>
+      <button aria-label="Reading settings" title="Reading settings" onClick={() => show("Reading settings")}><Settings2/></button>
+    </header>
+    <div className="folio-stage" ref={stage} aria-label="Book pages">
+      {error ? <div className="folio-empty" role="alert"><BookOpen/><p>{error}</p><button onClick={restart}>Try again</button><a href={getDownloadUrl(book.id)}>Download original</a></div>
+       : pdf ? <div className={textMode ? "folio-text-leaf" : "folio-leaf"} key={page}><PdfPage pdf={pdf} page={page} scale={zoom} fit={fit} textMode={textMode} {...size}/></div>
+       : epub && chapter?.page === page ? <article className="folio-prose" key={page} style={{ fontSize: (zoom / 100) * 1.2 + "rem" }} onClick={e => {
+         const link = (e.target as Element).closest<HTMLAnchorElement>("a[data-path]");
+         if (!link) return;
+         e.preventDefault();
+         const target = epub.chapters.indexOf(link.dataset.path || "") + 1;
+         if (!target) return;
+         const id = link.dataset.fragment || "";
+         if (target === page) document.getElementById("ap-anchor-" + id)?.scrollIntoView();
+         else { anchor.current = id; go(target); }
+       }} dangerouslySetInnerHTML={{ __html: chapter.html }}/>
+       : <div className="folio-empty" role="status"><BookOpen/><p>{epub ? "Opening chapter…" : "Opening your book…"}</p></div>}
     </div>
-  );
+    <footer className="folio-foot">
+      <progress value={total ? page : 0} max={total || 1} aria-label="Reading progress"/>
+      <div className="folio-tools">
+        <div className="folio-group"><button disabled={!total} aria-label={marked ? "Remove bookmark" : "Bookmark this location"} aria-pressed={marked} title={marked ? "Remove bookmark" : "Bookmark this location"} onClick={() => setMarks(values => marked ? values.filter(p => p !== page) : [...values, page].sort((a,b) => a-b))}>{marked ? <BookmarkCheck/> : <Bookmark/>}</button>
+        <button className="bookmark-list" onClick={() => show("Bookmarks")}>Bookmarks</button></div>
+        <div className="folio-group"><button aria-label="Previous page" disabled={page <= 1} onClick={() => go(page - 1)}><ChevronLeft/></button>
+        <button className="folio-location" onClick={() => show("Contents")} aria-label={unit + " " + page + " of " + total + ". Jump to location"}>{page} / {total || "…"}</button>
+        <button aria-label="Next page" disabled={page >= total} onClick={() => go(page + 1)}><ChevronRight/></button></div>
+        <div className="folio-group zoom-tools"><button aria-label="Zoom out" disabled={zoom <= 60} onClick={() => setZoom(z => Math.max(60, z - 20))}><Minus/></button><span>{zoom}%</span><button aria-label="Zoom in" disabled={zoom >= 220} onClick={() => setZoom(z => Math.min(220, z + 20))}><Plus/></button></div>
+      </div>
+    </footer>
+    <dialog className="folio-panel" ref={dialog} aria-labelledby="folio-panel-title" onClick={e => { if (e.target === dialog.current) dialog.current.close(); }}>
+      <div className="folio-panel-inner"><div className="panel-title"><h2 id="folio-panel-title">{panel}</h2><button aria-label="Close panel" onClick={() => dialog.current?.close()}><X/></button></div>
+      <div className="folio-tabs">{(["Contents", "Bookmarks", "Reading settings"] as Panel[]).map(name => <button aria-pressed={panel === name} key={name} onClick={() => setPanel(name)}>{name === "Reading settings" ? "Settings" : name}</button>)}</div>
+      {panel === "Contents" && <><form className="folio-jump" onSubmit={e => { e.preventDefault(); go(Number(entry)); }}>
+        <label htmlFor="folio-page">Go to {unit.toLowerCase()}</label><input required type="number" min="1" max={total || 1} id="folio-page" value={entry} onChange={e => setEntry(e.target.value)}/><button disabled={!total}>Go</button>
+      </form>{currentTitle && <p>Reading {currentTitle}</p>}{epub && <ol>{epub.chapters.map((path,i) => <li key={i}><button aria-current={i + 1 === page ? "location" : undefined} onClick={() => go(i + 1)}>{epub.titles.get(path) || "Chapter " + (i + 1)}</button></li>)}</ol>}</>}
+      {panel === "Bookmarks" && (marks.length ? <ol>{marks.map(p => <li key={p}><button onClick={() => go(p)}>{unit} {p}</button></li>)}</ol> : <p>Use the bookmark beside the page controls to save a place on this device.</p>)}
+      {panel === "Reading settings" && <>
+        <fieldset><legend>Reading theme</legend>{(["Paper","Sepia","Night"] as Theme[]).map(t => <button key={t} aria-pressed={theme === t} onClick={() => setTheme(t)}>{t}</button>)}</fieldset>
+        {isPdf && <fieldset><legend>PDF view</legend><button aria-pressed={!textMode} onClick={() => setTextMode(false)}>Original page</button><button aria-pressed={textMode} onClick={() => setTextMode(true)}>Selectable text</button></fieldset>}
+        {isPdf && !textMode && <fieldset><legend>Page fit</legend>{["page","width"].map(f => <button key={f} aria-pressed={fit === f} onClick={() => { setFit(f); setZoom(100); }}>Fit {f}</button>)}</fieldset>}
+        <label className="folio-check"><input type="checkbox" checked={motion} onChange={e => setMotion(e.target.checked)}/> Animate page turns</label>
+        <div className="folio-utilities"><a href={getDownloadUrl(book.id)} download><Download/> Download original</a>
+        {typeof document !== "undefined" && document.fullscreenEnabled && <button onClick={async () => { dialog.current?.close(); try { if (document.fullscreenElement) await document.exitFullscreen(); else await shell.current?.requestFullscreen(); } catch {} }}><Maximize/> Fullscreen</button>}</div>
+      </>}
+      </div>
+    </dialog>
+  </div>;
 }
