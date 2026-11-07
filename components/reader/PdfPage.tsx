@@ -7,6 +7,7 @@ export function PdfPage({ pdf, page, scale, fit, width, height, textMode }: {
   pdf: PDFDocumentProxy; page: number; scale: number; fit: string; textMode: boolean; width: number; height: number;
 }) {
   const mount = useRef<HTMLDivElement>(null);
+  const displayedPage = useRef<number>();
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
@@ -40,7 +41,14 @@ export function PdfPage({ pdf, page, scale, fit, width, height, textMode }: {
       if (!ctx) throw new Error("Canvas unavailable");
       task = source.render({ canvasContext: ctx, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
       await task.promise;
-      if (active) mount.current?.replaceChildren(canvas);
+      if (active && mount.current) {
+        const previous = displayedPage.current;
+        if (previous !== undefined && previous !== page) {
+          canvas.dataset.turn = page > previous ? "forward" : "back";
+        }
+        mount.current.replaceChildren(canvas);
+        displayedPage.current = page;
+      }
     }
     draw().catch(() => { if (active) setError("This page could not be rendered."); })
       .finally(() => { if (active) setBusy(false); });
@@ -49,5 +57,5 @@ export function PdfPage({ pdf, page, scale, fit, width, height, textMode }: {
   if (textMode) return <article className="folio-prose folio-extract" style={{ fontSize: (scale / 100) * 1.2 + "rem" }}>
     {busy ? "Reading page text…" : error || text || "This page has no embedded text. Choose Original page in Reading settings to see the scan."}
   </article>;
-  return <><div ref={mount} className="folio-canvas" aria-busy={busy} hidden={!!error}/>{busy && <span className="folio-status" role="status">Rendering page…</span>}{error && <p role="alert">{error}</p>}</>;
+  return <><div ref={mount} className="folio-canvas" aria-busy={busy} hidden={!!error}/>{error && <p role="alert">{error}</p>}</>;
 }

@@ -20,9 +20,29 @@
 .folio-identity{flex:1;min-width:0}.folio-identity h1{margin:3px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:400 clamp(18px,2vw,26px)/1.15 "Instrument Serif",Georgia,serif}
 .folio-identity small,.folio-location,.zoom-tools span,.folio-jump label,.folio-panel legend{font:500 11px "DM Mono",monospace;color:var(--muted)}
 .folio-identity small{letter-spacing:.12em;text-transform:uppercase}
-.folio-stage{position:relative;min-width:0;overflow:auto;padding:clamp(8px,2.5vw,28px);overscroll-behavior:contain}
+/* Measure only the desk. Page contents, shadows and scrollbars are inside
+   an independent scroller and cannot feed back into the fit calculation. */
+.folio-viewport{
+  --margin:clamp(15px,3.5vw,42px);
+  position:relative;min-width:0;min-height:0;overflow:hidden;contain:strict;
+  padding:var(--margin);
+  background:radial-gradient(ellipse at 48% 36%,#3d3d3a 0,#232423 46%,#101211 90%);
+}
+.folio[data-theme="Sepia"] .folio-viewport{background:radial-gradient(ellipse at 48% 36%,#544b40,#231f1b 80%)}
+.folio[data-theme="Night"] .folio-viewport{background:radial-gradient(ellipse at 48% 36%,#25282c,#090b0c 80%)}
+.folio-stage{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain;padding:var(--margin);overflow-anchor:none}
+.folio-viewport .folio-empty{color:#deded4}
+.folio-canvas,.folio-prose{
+  border-radius:2px 5px 5px 2px;
+  box-shadow:1px 1px #e4decd,2px 2px #9a9280,3px 3px #ded7c8,4px 4px #9c9383,5px 5px #d5cdbd,
+    10px 13px 15px #0005,18px 28px 45px #0007;
+}
+.folio-canvas{position:relative;background:ivory}
+.folio-canvas::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(90deg,#31291f18,transparent 2%,transparent 96%,#554a3615)}
+@media(min-width:720px){.folio-canvas,.folio-stage>.folio-prose{transform:perspective(1800px) rotateY(-4deg) rotateX(1deg);transform-origin:50% 50%}}
+
 .folio-leaf{width:max-content;min-width:100%;min-height:100%;display:grid;align-content:center;justify-items:center}
-.folio-canvas canvas,.folio-prose{display:block;box-shadow:1px 2px 0 #b6b5a8,2px 4px 0 #cfccbd,0 10px 28px #23302422}
+.folio-canvas canvas,.folio-prose{display:block;border-radius:inherit}
 .folio-canvas:empty{display:none}
 .folio-prose{max-width:72ch;min-height:100%;margin:auto;padding:clamp(20px,5vw,76px);line-height:1.72;color:var(--ink);background:var(--bar);font-family:Georgia,serif;overflow-wrap:anywhere}
 .folio-prose img{max-width:100%;height:auto}.folio-prose pre{white-space:pre-wrap}.folio-prose table{display:block;max-width:100%;overflow:auto}
@@ -42,7 +62,9 @@
 .folio-panel p{line-height:1.6}.folio-panel fieldset{margin:18px 0;padding:0;border:0}.folio-panel legend{margin-bottom:8px}.folio-panel fieldset button{margin:0 5px 5px 0}
 .folio-check,.folio-jump{display:flex;align-items:center;gap:10px}.folio input{accent-color:var(--active)}.folio-jump{flex-wrap:wrap}.folio-jump input{width:90px;min-height:42px;padding:6px;border:1px solid var(--rule);background:var(--bar);color:inherit;border-radius:6px}
 .folio-utilities{flex-wrap:wrap;margin:18px 0 0}.folio-panel ol{padding-left:24px}.folio-panel li button{text-align:left;justify-content:flex-start;width:100%}
-@keyframes folio-turn{from{transform:perspective(1100px) rotateY(-4deg);opacity:.75}to{transform:none;opacity:1}}
-@media(prefers-reduced-motion:no-preference){.folio[data-motion="true"] .folio-prose,.folio[data-motion="true"] canvas{transform-origin:left center;animation:folio-turn .22s ease-out}}
+@keyframes folio-turn{from{transform:perspective(1400px) rotateY(var(--turn-angle))}to{transform:none}}
+.folio [data-turn="forward"]{--turn-angle:-16deg;transform-origin:left center}
+.folio [data-turn="back"]{--turn-angle:16deg;transform-origin:right center}
+@media(prefers-reduced-motion:no-preference){.folio[data-motion="true"] [data-turn]{animation:folio-turn .25s ease-out}}
 @media(max-width:600px){.folio-head{min-height:54px}.folio button,.folio-head>a{min-height:44px;min-width:40px}.folio .bookmark-list{display:none}.folio-tools{padding:2px 4px}.folio-group{gap:0}.folio-tools .zoom-tools span{font-size:10px}.folio-tools .zoom-tools button{min-width:32px;padding-inline:5px}.folio-head{gap:1px}.folio-prose{padding:18px}}
 .folio-extract{white-space:pre-wrap}

@@ -28,7 +28,7 @@ export function BookReader({ book }: { book: BackendBook }) {
   const key = "airpages:reader:" + book.id;
   const [pdf, setPdf] = useState<PDFDocumentProxy>();
   const [epub, setEpub] = useState<Epub>();
-  const [chapter, setChapter] = useState<{ page: number; html: string; title?: string | null }>();
+  const [chapter, setChapter] = useState<{ page: number; html: string; title?: string | null; turn?: "forward" | "back" }>();
   const [page, setPage] = useState(1);
   const [marks, setMarks] = useState<number[]>([]);
   const [theme, setTheme] = useState<Theme>("Paper");
@@ -43,6 +43,7 @@ export function BookReader({ book }: { book: BackendBook }) {
   const [retry, setRetry] = useState(0);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const shell = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const anchor = useRef("");
@@ -95,10 +96,12 @@ export function BookReader({ book }: { book: BackendBook }) {
   }, [key, total, page, marks, zoom]);
 
   useEffect(() => {
-    const node = stage.current;
+    const node = viewport.current;
     if (!node) return;
     const observer = new ResizeObserver(([record]) => {
-      setSize({ width: Math.floor(record.contentRect.width), height: Math.floor(record.contentRect.height) });
+      const width = Math.floor(record.contentRect.width);
+      const height = Math.floor(record.contentRect.height);
+      setSize(old => old.width === width && old.height === height ? old : { width, height });
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -110,7 +113,10 @@ export function BookReader({ book }: { book: BackendBook }) {
     if (!epub) return;
     let active = true;
     readChapter(epub.zip, epub.chapters[page - 1]).then(result => {
-      if (active) setChapter({ ...result, page });
+      if (active) setChapter(previous => ({
+        ...result, page,
+        turn: previous && previous.page !== page ? (page > previous.page ? "forward" : "back") : undefined,
+      }));
     }).catch(() => { if (active) setError("This chapter could not be opened."); });
     return () => { active = false; };
   }, [epub, page]);
@@ -156,10 +162,11 @@ export function BookReader({ book }: { book: BackendBook }) {
       <button aria-label="Contents" title="Contents" onClick={() => show("Contents")}><List/></button>
       <button aria-label="Reading settings" title="Reading settings" onClick={() => show("Reading settings")}><Settings2/></button>
     </header>
+    <div className="folio-viewport" ref={viewport}>
     <div className="folio-stage" ref={stage} aria-label="Book pages">
       {error ? <div className="folio-empty" role="alert"><BookOpen/><p>{error}</p><button onClick={restart}>Try again</button><a href={getDownloadUrl(book.id)}>Download original</a></div>
-       : pdf ? <div className={textMode ? "folio-text-leaf" : "folio-leaf"} key={page}><PdfPage pdf={pdf} page={page} scale={zoom} fit={fit} textMode={textMode} {...size}/></div>
-       : epub && chapter?.page === page ? <article className="folio-prose" key={page} style={{ fontSize: (zoom / 100) * 1.2 + "rem" }} onClick={e => {
+       : pdf ? <div className={textMode ? "folio-text-leaf" : "folio-leaf"}><PdfPage pdf={pdf} page={page} scale={zoom} fit={fit} textMode={textMode} {...size}/></div>
+       : epub && chapter ? <article className="folio-prose" data-turn={chapter.turn} key={chapter.page} style={{ fontSize: (zoom / 100) * 1.2 + "rem" }} onClick={e => {
          const link = (e.target as Element).closest<HTMLAnchorElement>("a[data-path]");
          if (!link) return;
          e.preventDefault();
@@ -170,6 +177,7 @@ export function BookReader({ book }: { book: BackendBook }) {
          else { anchor.current = id; go(target); }
        }} dangerouslySetInnerHTML={{ __html: chapter.html }}/>
        : <div className="folio-empty" role="status"><BookOpen/><p>{epub ? "Opening chapter…" : "Opening your book…"}</p></div>}
+    </div>
     </div>
     <footer className="folio-foot">
       <progress value={total ? page : 0} max={total || 1} aria-label="Reading progress"/>
