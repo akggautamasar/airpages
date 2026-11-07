@@ -65,7 +65,7 @@ export function ReadBookClient({ id }: { id: string }) {
   if (!book || status !== "ready") {
     return (
       <main className="air-read-loading">
-        <Link href={book ? `/book/${book.id}` : "/"} className="back-link"><ArrowLeft size={15}/> Back to library</Link>
+        <Link href="/" className="back-link"><ArrowLeft size={15}/> Back to library</Link>
         <div className="loading-card">
           {status === "converting" || status === "loading" ? <Loader2 className="spin" size={28}/> : <span className="status-dot"/>}
           <h1>{book?.title || "AirPages"}</h1>

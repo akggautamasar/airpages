@@ -1,34 +1,16 @@
-import Link from "next/link";
 import { LibraryShelf } from "@/components/library/LibraryShelf";
-import { fetchLibraryBooks, type LibraryBook } from "@/lib/library";
+import { fetchLibraryBooks } from "@/lib/library";
+import { readingRoom } from "@/lib/reading-room";
+
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  let books: LibraryBook[] = [];
-  let total = 0;
-  let error = "";
-
   try {
-    const result = await fetchLibraryBooks(120);
-    books = result.books;
-    total = result.total;
-  } catch (e: unknown) {
-    error = e instanceof Error ? e.message : "The library backend is unavailable.";
+    const { books, total } = await fetchLibraryBooks(120);
+    return <LibraryShelf books={books.length ? books : readingRoom} total={total}
+      notice={books.length ? "" : "Your catalogue is empty. Explore the reading room’s poetry selection."} />;
+  } catch {
+    return <LibraryShelf books={readingRoom} total={0}
+      notice="The catalogue is temporarily unavailable. These poems are ready to read." />;
   }
-
-  return (
-    <main>
-      {error ? (
-        <div className="library-world">
-          <div className="empty-library">
-            <h1>AirPages</h1>
-            <p>{error}</p>
-            <p>Refresh after the AirBooksWorld service is available.</p>
-            <Link href="/read/airpages-demo">Open the presentation demo →</Link>
-          </div>
-        </div>
-      ) : (
-        <LibraryShelf books={books} />
-      )}
-    </main>
-  );
 }

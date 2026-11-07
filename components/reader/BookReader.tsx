@@ -226,6 +226,7 @@ export function BookReader({ book }: Props) {
       <div className="air-reader-top">
         <div className="reader-title"><span className="reader-kicker">{ext} · AIRPAGES</span><strong>{title}</strong></div>
         <div className="reader-actions">
+          <a href="/" aria-label="Back to library"><ChevronLeft size={17}/></a>
           {isEpub && <button onClick={() => setTocOpen((v) => !v)} aria-label="Contents"><List size={17}/></button>}
           <button onClick={() => setFontSize((s) => Math.max(70, s - 10))} aria-label="Smaller text"><Minus size={16}/></button>
           <span>{fontSize}%</span>
@@ -251,9 +252,9 @@ export function BookReader({ book }: Props) {
       </div>
 
       <div className="reader-bottom">
-        <button onClick={prev} disabled={page <= 1 || turn !== "idle"}><ChevronLeft size={18}/></button>
+        <button aria-label="Previous page" onClick={prev} disabled={page <= 1 || turn !== "idle"}><ChevronLeft size={18}/></button>
         <span>{page} / {total || "—"}</span>
-        <button onClick={next} disabled={page >= (total || 1) || turn !== "idle"}><ChevronRight size={18}/></button>
+        <button aria-label="Next page" onClick={next} disabled={page >= (total || 1) || turn !== "idle"}><ChevronRight size={18}/></button>
         <div className="progress"><i style={{ width: `${total ? (page / total) * 100 : 0}%` }}/></div>
       </div>
 
